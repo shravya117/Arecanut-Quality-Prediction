@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arecanut Quality Predictor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+        }
+        .container {
+            max-width: 600px;
+            margin: auto;
+            padding: 20px;
+            background: #fff;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            border-radius: 10px;
+        }
+        h1 {
+            color: #333;
+        }
+        video {
+            margin: 10px auto;
+            display: none;
+            border: 2px solid #007bff;
+            border-radius: 10px;
+        }
+        canvas {
+            display: none;
+        }
+        #prediction {
+            margin-top: 20px;
+            font-weight: bold;
+            font-size: 1.2em;
+            color: #007bff;
+        }
+        button, input[type="file"] {
+            margin: 10px;
+            padding: 10px 20px;
+            font-size: 1em;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button {
+            background-color: #007bff;
+            color: #fff;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        input[type="file"] {
+            background-color: #f4f4f4;
+            color: #333;
+            border: 1px solid #ccc;
+        }
+        input[type="file"]:disabled, button:disabled {
+            background-color: #ddd;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Arecanut Quality Classifier</h1>
+        <p>Choose an option to predict the quality:</p>
+
+        <!-- Upload Image Option -->
+        <label for="fileInput">Upload an Image:</label>
+        <input type="file" id="fileInput" accept="image/*">
+        <br>
+
+        <!-- Capture Photo Option -->
+        <button id="captureBtn">Click a Photo</button>
+        <video id="video" autoplay></video>
+        <canvas id="canvas"></canvas>
+
+        <!-- Prediction Text -->
+        <p id="prediction">Prediction: None</p>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const fileInput = document.getElementById("fileInput");
+            const captureBtn = document.getElementById("captureBtn");
+            const video = document.getElementById("video");
+            const canvas = document.getElementById("canvas");
+            const predictionText = document.getElementById("prediction");
+            let imageData = null;
+
+            // Disable one option when the other is chosen
+            fileInput.addEventListener("change", () => {
+                if (fileInput.files.length > 0) {
+                    captureBtn.disabled = true; // Disable capture button if a file is chosen
+                    handleFileUpload(fileInput.files[0]);
+                } else {
+                    captureBtn.disabled = false;
+                }
+            });
+
+            captureBtn.addEventListener("click", async () => {
+                fileInput.disabled = true; // Disable file input when capturing a photo
+
+                // Request access to the camera
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    video.style.display = "block";
+                    video.srcObject = stream;
+
+                    // Wait for user to click on video to capture
+                    video.addEventListener("click", () => {
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                        const context = canvas.getContext("2d");
+                        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                        imageData = canvas.toDataURL("image/jpeg");
+                        video.style.display = "none";
+                        stream.getTracks().forEach(track => track.stop()); // Stop the camera
+                        sendImage(imageData, true); // Send captured image
+                    });
+                } catch (error) {
+                    alert("Error accessing the camera: " + error.message);
+                }
+            });
+
+            function handleFileUpload(file) {
+                const formData = new FormData();
+                formData.append("file", file);
+
+                sendImage(formData, false);
+            }
+
+            function sendImage(data, isBase64) {
+                predictionText.textContent = "Prediction: Processing...";
+                const fetchOptions = isBase64
+                    ? {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ image: data }),
+                      }
+                    : {
+                          method: "POST",
+                          body: data,
+                      };
+
+                fetch("/upload", fetchOptions)
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            const prediction = data.prediction;
+                            const resultText = Object.entries(prediction)
+                                .map(([key, value]) => `${key}: ${(value * 100).toFixed(2)}%`)
+                                .join("<br>");
+                            predictionText.innerHTML = `Prediction:<br>${resultText}`;
+                        } else {
+                            predictionText.textContent = `Error: ${data.error}`;
+                        }
+                    })
+                    .catch(error => {
+                        predictionText.textContent = "Prediction: Error processing the image.";
+                        console.error("Error:", error);
+                    });
+            }
+        });
+    </script>
+</body>
+</html>
